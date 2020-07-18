@@ -1,6 +1,7 @@
 import { Unleash, UnleashConfig } from './unleash';
 import { Variant, getDefaultVariant } from './variant';
 import { Context } from './context';
+import { FeatureInterface } from './feature';
 
 export { Strategy } from './strategy/index';
 export { Unleash } from './unleash';
@@ -16,17 +17,21 @@ export function isEnabled(name: string, context: Context = {}, fallbackValue?: b
     return !!instance && instance.isEnabled(name, context, fallbackValue);
 }
 
+export function isEnabledFeature(feature: FeatureInterface, context: Context = {}, fallbackValue?: boolean): boolean {
+    return !!instance && instance.isFeatureEnabled(feature, context, fallbackValue);
+}
+
 export function destroy() {
     return instance && instance.destroy();
 }
 
-export function getFeatureToggleDefinition(toggleName: string) {
-    return instance && instance.getFeatureToggleDefinition(toggleName);
-}
+// export function getFeatureToggleDefinition(toggleName: string) {
+//     return instance && instance.getFeatureToggleDefinition(toggleName);
+// }
 
-export function getFeatureToggleDefinitions() {
-    return instance && instance.getFeatureToggleDefinitions();
-}
+// export function getFeatureToggleDefinitions() {
+//     return instance && instance.getFeatureToggleDefinitions();
+// }
 
 export function getVariant(
     name: string,
