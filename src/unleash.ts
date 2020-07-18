@@ -32,7 +32,7 @@ export interface UnleashConfig {
     customHeaders?: CustomHeaders;
     customHeadersFunction?: CustomHeadersFunction;
     timeout?: number;
-    repository?: RepositoryInterface;
+    repository?: RepositoryInterface; // TODO if failed to initialize use any as type
 }
 
 export interface StaticContext {
@@ -102,46 +102,49 @@ export class Unleash extends EventEmitter {
 
         this.staticContext = { appName, environment };
 
-        this.repository = repository || new Repository({
-            backupPath,
-            url,
-            appName,
-            instanceId,
-            refreshInterval,
-            headers: customHeaders,
-            customHeadersFunction,
-            timeout,
-        });
+        this.repository =
+            repository ||
+            new Repository({
+                backupPath,
+                url,
+                appName,
+                instanceId,
+                refreshInterval,
+                headers: customHeaders,
+                customHeadersFunction,
+                timeout,
+            });
 
         strategies = defaultStrategies.concat(strategies);
-            
 
-        // this.repository.on('ready', () => {
-        //     this.client = new Client(this.repository, strategies);
-        //     this.client.on('error', err => this.emit('error', err));
-        //     this.client.on('warn', msg => this.emit('warn', msg));
-        //     this.emit('ready');
-        // });
+        if (this.isEmptyObject(this.repository)) {
+            // this is a hack!
+            this.client = new Client(this.repository, strategies);
+        } else {
+            this.repository.on('ready', () => {
+                this.client = new Client(this.repository, strategies);
+                this.client.on('error', err => this.emit('error', err));
+                this.client.on('warn', msg => this.emit('warn', msg));
+                this.emit('ready');
+            });
 
-        // this is a hack!
-        this.client = new Client(this.repository, strategies);
+            this.repository.on('error', err => {
+                err.message = `Unleash Repository error: ${err.message}`;
+                this.emit('error', err);
+            });
 
-        // this.repository.on('error', err => {
-        //     err.message = `Unleash Repository error: ${err.message}`;
-        //     this.emit('error', err);
-        // });
+            this.repository.on('warn', msg => {
+                this.emit('warn', msg);
+            });
 
-        // this.repository.on('warn', msg => {
-        //     this.emit('warn', msg);
-        // });
+            this.repository.on('unchanged', () => {
+                this.emit('unchanged');
+            });
 
-        // this.repository.on('unchanged', () => {
-        //     this.emit('unchanged');
-        // });
-
-        // this.repository.on('changed', data => {
-        //     this.emit('changed', data);
-        // });
+            this.repository.on('changed', data => {
+                this.emit('changed', data);
+            });
+        }
 
         this.metrics = new Metrics({
             disableMetrics,
@@ -177,13 +180,23 @@ export class Unleash extends EventEmitter {
         });
     }
 
+    private isEmptyObject(obj: any) {
+        for (var key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     destroy() {
-        // this.repository.stop();
+        if (!this.isEmptyObject(this.repository)) {
+            this.repository.stop();
+        }
         this.metrics.stop();
         this.client = undefined;
     }
 
-    // TODO unsupported
     isEnabled(name: string, context: Context, fallbackFunction?: FallbackFunction): boolean;
     isEnabled(name: string, context: Context, fallbackValue?: boolean): boolean;
     isEnabled(name: string, context: Context, fallback?: FallbackFunction | boolean): boolean {
@@ -204,14 +217,22 @@ export class Unleash extends EventEmitter {
         return result;
     }
 
-    isFeatureEnabled(feature: FeatureInterface, context: Context, fallbackFunction?: FallbackFunction): boolean;
+    isFeatureEnabled(
+        feature: FeatureInterface,
+        context: Context,
+        fallbackFunction?: FallbackFunction,
+    ): boolean;
     isFeatureEnabled(feature: FeatureInterface, context: Context, fallbackValue?: boolean): boolean;
-    isFeatureEnabled(feature: FeatureInterface, context: Context, fallback?: FallbackFunction | boolean): boolean {
+    isFeatureEnabled(
+        feature: FeatureInterface,
+        context: Context,
+        fallback?: FallbackFunction | boolean,
+    ): boolean {
         const enhancedContext = Object.assign({}, this.staticContext, context);
-        const fallbackFunc = createFallbackFunction( feature.name, enhancedContext, fallback);
+        const fallbackFunc = createFallbackFunction(feature.name, enhancedContext, fallback);
 
         let result;
-        
+
         if (this.client !== undefined) {
             result = this.client.isFeatureEnabled(feature, enhancedContext, fallbackFunc);
         } else {
@@ -225,7 +246,27 @@ export class Unleash extends EventEmitter {
         return result;
     }
 
-    // TODO unsupported
+    getFeatureVariant(feature: FeatureInterface, context: any, fallbackVariant?: Variant): Variant {
+        const enhancedContext = Object.assign({}, this.staticContext, context);
+        let result;
+        if (this.client !== undefined) {
+            result = this.client.getFeautureVariant(feature, enhancedContext, fallbackVariant);
+        } else {
+            result = typeof fallbackVariant !== 'undefined' ? fallbackVariant : getDefaultVariant();
+            this.emit(
+                'warn',
+                `Unleash has not been initialized yet. isEnabled(${feature.name}) defaulted to ${result}`,
+            );
+        }
+        if (result.name) {
+            this.countVariant(feature.name, result.name);
+        } else {
+            this.count(feature.name, result.enabled);
+        }
+
+        return result;
+    }
+
     getVariant(name: string, context: any, fallbackVariant?: Variant): Variant {
         const enhancedContext = Object.assign({}, this.staticContext, context);
         let result;
@@ -247,15 +288,13 @@ export class Unleash extends EventEmitter {
         return result;
     }
 
-    // TODO unsupported
-    // getFeatureToggleDefinition(toggleName: string): FeatureInterface {
-    //     return this.repository.getToggle(toggleName);
-    // }
+    getFeatureToggleDefinition(toggleName: string): FeatureInterface {
+        return this.repository.getToggle(toggleName);
+    }
 
-    // TODO unsupported
-    // getFeatureToggleDefinitions(): FeatureInterface[] {
-    //     return this.repository.getToggles();
-    // }
+    getFeatureToggleDefinitions(): FeatureInterface[] {
+        return this.repository.getToggles();
+    }
 
     count(toggleName: string, enabled: boolean) {
         this.metrics.count(toggleName, enabled);

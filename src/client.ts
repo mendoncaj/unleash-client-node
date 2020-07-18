@@ -34,11 +34,9 @@ export default class UnleashClient extends EventEmitter {
     }
 
     private getStrategy(name: string): Strategy | undefined {
-        return this.strategies.find(
-            (strategy: Strategy): boolean => {
-                return strategy.name === name;
-            },
-        );
+        return this.strategies.find((strategy: Strategy): boolean => {
+            return strategy.name === name;
+        });
     }
 
     warnOnce(missingStrategy: string, name: string, strategies: StrategyTransportInterface[]) {
@@ -83,28 +81,35 @@ export default class UnleashClient extends EventEmitter {
 
         return (
             feature.strategies.length > 0 &&
-            feature.strategies.some(
-                (strategySelector): boolean => {
-                    const strategy = this.getStrategy(strategySelector.name);
-                    if (!strategy) {
-                        this.warnOnce(strategySelector.name, feature.name, feature.strategies);
-                        return false;
-                    }
-                    return strategy.isEnabledWithConstraints(
-                        strategySelector.parameters,
-                        context,
-                        strategySelector.constraints,
-                    );
-                },
-            )
+            feature.strategies.some((strategySelector): boolean => {
+                const strategy = this.getStrategy(strategySelector.name);
+                if (!strategy) {
+                    this.warnOnce(strategySelector.name, feature.name, feature.strategies);
+                    return false;
+                }
+                return strategy.isEnabledWithConstraints(
+                    strategySelector.parameters,
+                    context,
+                    strategySelector.constraints,
+                );
+            })
         );
     }
 
     getVariant(name: string, context: Context, fallbackVariant?: Variant): Variant {
+        const feature = this.repository.getToggle(name);
+        return this._getVariant(feature, context, fallbackVariant);
+    }
+
+    private _getVariant(
+        feature: FeatureInterface,
+        context: Context,
+        fallbackVariant?: Variant,
+    ): Variant {
         if (!fallbackVariant) {
             fallbackVariant = getDefaultVariant();
         }
-        const feature = this.repository.getToggle(name);
+
         if (
             typeof feature === 'undefined' ||
             !feature.variants ||
@@ -131,5 +136,13 @@ export default class UnleashClient extends EventEmitter {
             payload: variant.payload,
             enabled,
         };
+    }
+
+    getFeautureVariant(
+        feature: FeatureInterface,
+        context: Context,
+        fallbackVariant?: Variant,
+    ): Variant {
+        return this._getVariant(feature, context, fallbackVariant);
     }
 }
